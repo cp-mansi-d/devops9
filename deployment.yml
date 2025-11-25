@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  S3Bucket:
+    Type: String
+    Description: S3 bucket that stores the Lambda deployment package
+  S3Key:
+    Type: String
+    Description: Object key for the Lambda deployment package inside the S3 bucket
+  StageName:
+    Type: String
+    Default: prod
+    Description: API Gateway stage name
+
+Resources:
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GolangApiLambdaExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaLogsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  GolangLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: GolangGinLambda
+      Handler: main
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: go1.x
+      Timeout: 10
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3Key
+
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: GolangApi
+
+  GetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !GetAtt ApiGatewayRestApi.RootResourceId
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - Region: !Ref "AWS::Region"
+            LambdaArn: !GetAtt GolangLambdaFunction.Arn
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref GolangLambdaFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: GetMethod
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref ApiGatewayDeployment
+      RestApiId: !Ref ApiGatewayRestApi
+      StageName: !Ref StageName
+      MethodSettings:
+        - DataTraceEnabled: true
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          ResourcePath: "/*"
+
+Outputs:
+  ApiInvokeUrl:
+    Description: Invoke URL for the deployed API
+    Value: !Sub https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}

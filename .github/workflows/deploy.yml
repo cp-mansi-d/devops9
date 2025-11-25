@@ -1,0 +1,101 @@
+name: Deploy Lambda
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  STAGE_NAME: prod
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install zip utility
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zip
+
+      - name: Tidy dependencies
+        run: go mod tidy
+
+      - name: Build Linux binary
+        run: GOOS=linux GOARCH=amd64 go build -o main main.go
+
+      - name: Create Lambda package
+        run: zip function.zip main
+
+      - name: Upload Lambda artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-package
+          path: function.zip
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Lambda artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload package to S3 and deploy
+        env:
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          if [ -z "$S3_BUCKET" ]; then
+            echo "S3_BUCKET secret is required."
+            exit 1
+          fi
+
+          S3_FILE_NAME="golang_lambda_${GITHUB_RUN_ID}.zip"
+          cp function.zip "$S3_FILE_NAME"
+          aws s3 cp "$S3_FILE_NAME" "s3://$S3_BUCKET"
+
+          STACK_STATUS=$(aws cloudformation describe-stacks \
+            --stack-name golang-api-stack \
+            --query "Stacks[0].StackStatus" \
+            --output text 2>/dev/null || echo "NOT_FOUND")
+
+          if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ]; then
+            echo "Deleting existing stack in ROLLBACK_COMPLETE state..."
+            aws cloudformation delete-stack --stack-name golang-api-stack
+            aws cloudformation wait stack-delete-complete --stack-name golang-api-stack
+          fi
+
+          aws cloudformation validate-template --template-body file://deployment.yml
+
+          aws cloudformation deploy \
+            --stack-name golang-api-stack \
+            --template-file deployment.yml \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --parameter-overrides \
+              S3Key="$S3_FILE_NAME" \
+              S3Bucket="$S3_BUCKET" \
+              StageName="$STAGE_NAME"
+
+
