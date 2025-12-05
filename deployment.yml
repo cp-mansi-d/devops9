@@ -41,9 +41,11 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: GolangGinLambda
-      Handler: main
+      Handler: bootstrap
       Role: !GetAtt LambdaExecutionRole.Arn
-      Runtime: go1.x
+      Runtime: provided.al2023
+      Architectures:
+        - x86_64
       Timeout: 10
       Code:
         S3Bucket: !Ref S3Bucket
