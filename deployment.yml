@@ -95,7 +95,7 @@ Resources:
           HttpMethod: "*"
           LoggingLevel: INFO
           ResourcePath: "/*"
-    
+
   ApiGatewayCWLogsRole:
     Type: AWS::IAM::Role
     Properties:
@@ -123,6 +123,7 @@ Resources:
 
   ApiGatewayAccount:
     Type: AWS::ApiGateway::Account
+    DependsOn: ApiGatewayCWLogsRole
     Properties:
       CloudWatchRoleArn: !GetAtt ApiGatewayCWLogsRole.Arn
 
