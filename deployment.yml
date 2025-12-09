@@ -56,12 +56,34 @@ Resources:
     Properties:
       Name: GolangApi
 
-  GetMethod:
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      PathPart: "{proxy+}"
+
+  RootMethod:
     Type: AWS::ApiGateway::Method
     Properties:
       RestApiId: !Ref ApiGatewayRestApi
       ResourceId: !GetAtt ApiGatewayRestApi.RootResourceId
-      HttpMethod: GET
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+          - Region: !Ref "AWS::Region"
+            LambdaArn: !GetAtt GolangLambdaFunction.Arn
+
+  ProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
       AuthorizationType: NONE
       Integration:
         Type: AWS_PROXY
@@ -77,10 +99,17 @@ Resources:
       FunctionName: !Ref GolangLambdaFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
+      SourceArn: !Sub
+        - arn:aws:execute-api:${Region}:${AccountId}:${ApiId}/*/*
+        - Region: !Ref "AWS::Region"
+          AccountId: !Ref "AWS::AccountId"
+          ApiId: !Ref ApiGatewayRestApi
 
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment
-    DependsOn: GetMethod
+    DependsOn:
+      - RootMethod
+      - ProxyMethod
     Properties:
       RestApiId: !Ref ApiGatewayRestApi
 
