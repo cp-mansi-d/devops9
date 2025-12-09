@@ -11,6 +11,18 @@ Parameters:
     Type: String
     Default: prod
     Description: API Gateway stage name
+  LambdaFunctionName:
+    Type: String
+    Default: GolangGinLambda
+    Description: Name for the Lambda function
+  ApiGatewayName:
+    Type: String
+    Default: GolangApi
+    Description: Name for the API Gateway
+  LambdaExecutionRoleName:
+    Type: String
+    Default: GolangApiLambdaExecutionRole
+    Description: Name for the Lambda execution IAM role
   CustomDomainName:
     Type: String
     Default: ""
@@ -35,7 +47,7 @@ Resources:
   LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: GolangApiLambdaExecutionRole
+      RoleName: !Ref LambdaExecutionRoleName
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -58,7 +70,7 @@ Resources:
   GolangLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: GolangGinLambda
+      FunctionName: !Ref LambdaFunctionName
       Handler: bootstrap
       Role: !GetAtt LambdaExecutionRole.Arn
       Runtime: provided.al2023
@@ -72,7 +84,7 @@ Resources:
   ApiGatewayRestApi:
     Type: AWS::ApiGateway::RestApi
     Properties:
-      Name: GolangApi
+      Name: !Ref ApiGatewayName
 
   ProxyResource:
     Type: AWS::ApiGateway::Resource

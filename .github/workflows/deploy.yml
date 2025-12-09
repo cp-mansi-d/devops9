@@ -10,6 +10,10 @@ permissions:
 
 env:
   STAGE_NAME: prod
+  STACK_NAME: golang-api-stack-new
+  LAMBDA_FUNCTION_NAME: GolangGinLambda
+  API_GATEWAY_NAME: GolangApi
+  LAMBDA_ROLE_NAME: GolangApiLambdaExecutionRole
 
 jobs:
   build:
@@ -32,10 +36,10 @@ jobs:
         run: go mod tidy
 
       - name: Build Linux binary
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bootstrap main.go
+        run: GOOS=linux GOARCH=amd64 go build -o main main.go
 
       - name: Create Lambda package
-        run: zip function.zip bootstrap
+        run: zip function.zip main
 
       - name: Upload Lambda artifact
         uses: actions/upload-artifact@v4
@@ -80,20 +84,20 @@ jobs:
           aws s3 cp "$S3_FILE_NAME" "s3://$S3_BUCKET"
 
           STACK_STATUS=$(aws cloudformation describe-stacks \
-            --stack-name golang-api-stack \
+            --stack-name "$STACK_NAME" \
             --query "Stacks[0].StackStatus" \
             --output text 2>/dev/null || echo "NOT_FOUND")
 
           if [ "$STACK_STATUS" = "ROLLBACK_COMPLETE" ]; then
             echo "Deleting existing stack in ROLLBACK_COMPLETE state..."
-            aws cloudformation delete-stack --stack-name golang-api-stack
-            aws cloudformation wait stack-delete-complete --stack-name golang-api-stack
+            aws cloudformation delete-stack --stack-name "$STACK_NAME"
+            aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
           fi
 
           aws cloudformation validate-template --template-body file://deployment.yml
 
           # Build parameter overrides
-          PARAM_OVERRIDES="S3Key=$S3_FILE_NAME S3Bucket=$S3_BUCKET StageName=$STAGE_NAME"
+          PARAM_OVERRIDES="S3Key=$S3_FILE_NAME S3Bucket=$S3_BUCKET StageName=$STAGE_NAME LambdaFunctionName=$LAMBDA_FUNCTION_NAME ApiGatewayName=$API_GATEWAY_NAME LambdaExecutionRoleName=$LAMBDA_ROLE_NAME"
           
           if [ -n "$CUSTOM_DOMAIN_NAME" ]; then
             PARAM_OVERRIDES="$PARAM_OVERRIDES CustomDomainName=$CUSTOM_DOMAIN_NAME"
@@ -108,7 +112,7 @@ jobs:
           fi
 
           aws cloudformation deploy \
-            --stack-name golang-api-stack \
+            --stack-name "$STACK_NAME" \
             --template-file deployment.yml \
             --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
             --parameter-overrides $PARAM_OVERRIDES
