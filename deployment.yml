@@ -96,7 +96,7 @@ Resources:
           LoggingLevel: INFO
           ResourcePath: "/*"
     
-      ApiGatewayCWLogsRole:
+  ApiGatewayCWLogsRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: ApiGatewayCloudWatchLogsRole
