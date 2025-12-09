@@ -11,6 +11,24 @@ Parameters:
     Type: String
     Default: prod
     Description: API Gateway stage name
+  CustomDomainName:
+    Type: String
+    Default: ""
+    Description: Custom domain name for API Gateway (e.g., api.example.com)
+  AcmCertificateArn:
+    Type: String
+    Default: ""
+    Description: ACM Certificate ARN for the custom domain (must be in us-east-1 for API Gateway)
+  HostedZoneId:
+    Type: String
+    Default: ""
+    Description: Route53 Hosted Zone ID for the domain (optional, if not provided, DNS record won't be created)
+
+Conditions:
+  HasCustomDomain: !Not [!Equals [!Ref CustomDomainName, ""]]
+  HasHostedZone: !And
+    - !Not [!Equals [!Ref CustomDomainName, ""]]
+    - !Not [!Equals [!Ref HostedZoneId, ""]]
 
 Resources:
 
@@ -156,7 +174,53 @@ Resources:
     Properties:
       CloudWatchRoleArn: !GetAtt ApiGatewayCWLogsRole.Arn
 
+  ApiGatewayDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Condition: HasCustomDomain
+    Properties:
+      DomainName: !Ref CustomDomainName
+      CertificateArn: !Ref AcmCertificateArn
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+
+  ApiGatewayBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Condition: HasCustomDomain
+    DependsOn:
+      - ApiGatewayDeployment
+      - ApiGatewayDomainName
+    Properties:
+      DomainName: !Ref ApiGatewayDomainName
+      RestApiId: !Ref ApiGatewayRestApi
+      Stage: !Ref StageName
+      BasePath: ""
+
+  Route53Record:
+    Type: AWS::Route53::RecordSet
+    Condition: HasHostedZone
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiGatewayDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt ApiGatewayDomainName.RegionalHostedZoneId
+
 Outputs:
   ApiInvokeUrl:
     Description: Invoke URL for the deployed API
     Value: !Sub https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  CustomDomainUrl:
+    Condition: HasCustomDomain
+    Description: Custom domain URL for the API
+    Value: !Sub https://${CustomDomainName}
+  ApiGatewayDomainName:
+    Condition: HasCustomDomain
+    Description: API Gateway Domain Name
+    Value: !Ref ApiGatewayDomainName
+  RegionalDomainName:
+    Condition: HasCustomDomain
+    Description: Regional Domain Name for Route53 alias
+    Value: !GetAtt ApiGatewayDomainName.RegionalDomainName
