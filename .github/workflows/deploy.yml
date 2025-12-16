@@ -99,6 +99,67 @@ jobs:
             aws cloudformation wait stack-delete-complete --stack-name golang-api-stack
           fi
 
+          # Check and delete existing API Gateway custom domain if it exists
+          # This handles conflicts between EDGE and REGIONAL endpoint types
+          echo "Checking for existing API Gateway custom domain: $CUSTOM_DOMAIN_NAME"
+          
+          # Try to get the domain (works for both EDGE and REGIONAL)
+          if aws apigateway get-domain-name --domain-name "$CUSTOM_DOMAIN_NAME" >/dev/null 2>&1; then
+            echo "Found existing custom domain. Deleting base path mappings first..."
+            
+            # Delete all base path mappings (required before deleting domain)
+            MAX_ATTEMPTS=5
+            ATTEMPT=0
+            while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+              # Get base path mappings
+              MAPPINGS_OUTPUT=$(aws apigateway get-base-path-mappings \
+                --domain-name "$CUSTOM_DOMAIN_NAME" \
+                --query 'items[*].basePath' \
+                --output text 2>/dev/null || echo "")
+              
+              if [ -z "$MAPPINGS_OUTPUT" ] || [ "$MAPPINGS_OUTPUT" = "None" ]; then
+                break
+              fi
+              
+              # Delete each base path mapping
+              for base_path in $MAPPINGS_OUTPUT; do
+                # Handle empty base path (root path)
+                if [ -z "$base_path" ] || [ "$base_path" = "None" ] || [ "$base_path" = "(none)" ]; then
+                  # Try deleting with empty string first, then with (none)
+                  aws apigateway delete-base-path-mapping \
+                    --domain-name "$CUSTOM_DOMAIN_NAME" \
+                    --base-path "" 2>/dev/null || \
+                  aws apigateway delete-base-path-mapping \
+                    --domain-name "$CUSTOM_DOMAIN_NAME" \
+                    --base-path "(none)" 2>/dev/null || true
+                else
+                  echo "Deleting base path mapping: '$base_path'"
+                  aws apigateway delete-base-path-mapping \
+                    --domain-name "$CUSTOM_DOMAIN_NAME" \
+                    --base-path "$base_path" 2>/dev/null || true
+                fi
+              done
+              
+              ATTEMPT=$((ATTEMPT + 1))
+              sleep 3
+            done
+            
+            echo "Deleting existing custom domain: $CUSTOM_DOMAIN_NAME"
+            aws apigateway delete-domain-name --domain-name "$CUSTOM_DOMAIN_NAME" || true
+            
+            # Wait for domain deletion to complete (can take a few seconds)
+            echo "Waiting for domain deletion to complete..."
+            sleep 15
+            
+            # Verify deletion
+            if aws apigateway get-domain-name --domain-name "$CUSTOM_DOMAIN_NAME" >/dev/null 2>&1; then
+              echo "Warning: Domain still exists after deletion attempt. Waiting longer..."
+              sleep 10
+            fi
+          else
+            echo "No existing custom domain found. Proceeding with deployment."
+          fi
+
           aws cloudformation validate-template --template-body file://deployment.yml
 
           aws cloudformation deploy \
