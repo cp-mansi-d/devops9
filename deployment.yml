@@ -11,6 +11,15 @@ Parameters:
     Type: String
     Default: prod
     Description: API Gateway stage name
+  AcmCertificateArn:
+    Type: String
+    Description: ARN of the ACM certificate for the custom domain
+  CustomDomainName:
+    Type: String
+    Description: Custom domain name for API Gateway (e.g., api.example.com)
+  HostedZoneId:
+    Type: String
+    Description: Route53 Hosted Zone ID for the domain
 
 Resources:
 
@@ -156,7 +165,51 @@ Resources:
     Properties:
       CloudWatchRoleArn: !GetAtt ApiGatewayCWLogsRole.Arn
 
+  # Custom Domain Name for API Gateway
+  ApiGatewayDomainName:
+    Type: AWS::ApiGateway::DomainName
+    Properties:
+      DomainName: !Ref CustomDomainName
+      CertificateArn: !Ref AcmCertificateArn
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      SecurityPolicy: TLS_1_2
+
+  # Base Path Mapping - maps custom domain to API Gateway
+  ApiGatewayBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    DependsOn:
+      - ApiGatewayDomainName
+      - ApiGatewayStage
+    Properties:
+      DomainName: !Ref ApiGatewayDomainName
+      RestApiId: !Ref ApiGatewayRestApi
+      Stage: !Ref ApiGatewayStage
+      BasePath: ""
+
+  # Route53 Record to point domain to API Gateway
+  Route53Record:
+    Type: AWS::Route53::RecordSet
+    DependsOn:
+      - ApiGatewayDomainName
+      - ApiGatewayBasePathMapping
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref CustomDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiGatewayDomainName.RegionalDomainName
+        HostedZoneId: !GetAtt ApiGatewayDomainName.RegionalHostedZoneId
+        EvaluateTargetHealth: false
+
 Outputs:
   ApiInvokeUrl:
     Description: Invoke URL for the deployed API
     Value: !Sub https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${StageName}
+  CustomDomainUrl:
+    Description: Custom domain URL for the API
+    Value: !Sub https://${CustomDomainName}
+  ApiGatewayDomainName:
+    Description: API Gateway Domain Name
+    Value: !Ref ApiGatewayDomainName
