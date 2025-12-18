@@ -9,6 +9,7 @@ Parameters:
     Description: Object key for the Lambda deployment package inside the S3 bucket
   StageName:
     Type: String
+    Default: prod
     Description: API Gateway stage name
   AcmCertificateArn:
     Type: String
@@ -184,7 +185,6 @@ Resources:
       DomainName: !Ref ApiGatewayDomainName
       RestApiId: !Ref ApiGatewayRestApi
       Stage: !Ref StageName
-      BasePath: ""
 
   Route53RecordSet:
     Type: AWS::Route53::RecordSet
