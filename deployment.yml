@@ -13,10 +13,10 @@ Parameters:
     Description: API Gateway stage name
   AcmCertificateArn:
     Type: String
-    Description: ACM Certificate ARN for the custom domain (must be in us-east-1 for API Gateway)
+    Description: ACM Certificate ARN for the custom domain (must be in the same region as API Gateway)
   CustomDomainName:
     Type: String
-    Description: Custom domain name for API Gateway (e.g., api.example.com)
+    Description: Subdomain for API (e.g., api.bitespace.in)
   Route53HostedZoneId:
     Type: String
     Description: Route53 Hosted Zone ID for the domain (optional, leave empty if not using Route53)
@@ -170,7 +170,7 @@ Resources:
     Type: AWS::ApiGateway::DomainName
     Properties:
       DomainName: !Ref CustomDomainName
-      CertificateArn: !Ref RegionalCertificateArn
+      CertificateArn: !Ref AcmCertificateArn
       EndpointConfiguration:
         Types:
           - REGIONAL
