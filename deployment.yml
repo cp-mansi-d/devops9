@@ -185,7 +185,7 @@ Resources:
       DomainName: !Ref ApiGatewayDomainName
       RestApiId: !Ref ApiGatewayRestApi
       Stage: !Ref StageName
-      BasePath: "prod"
+      BasePath: ""
 
   Route53RecordSet:
     Type: AWS::Route53::RecordSet
