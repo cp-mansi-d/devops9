@@ -62,9 +62,12 @@ Resources:
         S3Key: !Ref S3Key
 
   ApiGatewayRestApi:
-    Type: AWS::ApiGateway::RestApi
-    Properties:
-      Name: GolangApi
+  Type: AWS::ApiGateway::RestApi
+  Properties:
+    Name: GolangApi
+    EndpointConfiguration:
+      Types:
+        - REGIONAL
 
   ProxyResource:
     Type: AWS::ApiGateway::Resource
